@@ -13,62 +13,52 @@ use esp_idf_hal::delay::{FreeRtos, BLOCK};
 use esp_idf_hal::i2c::*;
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::prelude::*;
+use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal as esp_idf_hal;
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use std::io::Write;
+use std::net::TcpStream;
+
+use crate::networking::NetworkStack;
 
 const SSD1306_ADDRESS: u8 = 0x3c;
 
+mod networking;
+mod options;
+
 fn main() -> anyhow::Result<()> {
-    esp_idf_hal::sys::link_patches();
+    esp_idf_svc::sys::link_patches();
+
+    println!("Rust main entered");
 
     let peripherals = Peripherals::take()?;
-    let i2c = peripherals.i2c0;
-    let sda = peripherals.pins.gpio5;
-    let scl = peripherals.pins.gpio6;
+    // let i2c = peripherals.i2c0;
+    // let sda = peripherals.pins.gpio5;
+    // let scl = peripherals.pins.gpio6;
+
+    let sys_loop = EspSystemEventLoop::take()?;
+    let nvs = EspDefaultNvsPartition::take()?;
+    let mut net_stack = NetworkStack::configure(peripherals.modem, sys_loop.clone(), nvs)?;
+
+    net_stack.start()?;
+    println!("Connected");
+
+    let mut stream = TcpStream::connect("192.168.4.68:5433")?;
+    stream.write("hello world\r\n".as_bytes())?;
 
     println!("Starting I2C SSD1306 test");
 
-    let config = I2cConfig::new().baudrate(100.kHz().into());
-    let mut i2c = I2cDriver::new(i2c, sda, scl, &config)?;
+    //let config = I2cConfig::new().baudrate(100.kHz().into());
+    //let mut i2c = I2cDriver::new(i2c, sda, scl, &config)?;
 
-    // initialze the display - don't worry about the meaning of these bytes - it's specific to SSD1306
-    i2c.write(SSD1306_ADDRESS, &[0, 0xae], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xd4], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x80], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xa8], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x3f], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xd3], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x00], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x40], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x8d], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x14], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xa1], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xc8], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xda], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x12], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x81], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xcf], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xf1], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xdb], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x40], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xa4], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xa6], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0xaf], BLOCK)?;
-    i2c.write(SSD1306_ADDRESS, &[0, 0x20, 0x00], BLOCK)?;
-
-    // fill the display
-    for _ in 0..64 {
-        let data: [u8; 17] = [
-            0x40, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xff,
-        ];
-        i2c.write(SSD1306_ADDRESS, &data, BLOCK)?;
-    }
-
+    let mut counter = 1u32;
     loop {
         // we are sleeping here to make sure the watchdog isn't triggered
         FreeRtos::delay_ms(500);
-        i2c.write(SSD1306_ADDRESS, &[0, 0xa6], BLOCK)?;
+        //i2c.write(SSD1306_ADDRESS, &[0, 0xa6], BLOCK)?;
         FreeRtos::delay_ms(500);
-        i2c.write(SSD1306_ADDRESS, &[0, 0xa7], BLOCK)?;
+        //i2c.write(SSD1306_ADDRESS, &[0, 0xa7], BLOCK)?;
+        stream.write(format!("count {counter}\r\n").as_bytes())?;
+        counter += 1;
     }
 }
